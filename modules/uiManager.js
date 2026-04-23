@@ -1,6 +1,8 @@
 // UI Manager Module
 // Responsible for creating and managing the user interface elements
 
+const _extensionAPI = typeof browser !== 'undefined' ? browser : chrome;
+
 class UIManager {
   constructor(settings) {
     this.settings = settings || {
@@ -228,8 +230,8 @@ class UIManager {
             animation: fadeIn 0.3s ease-out !important;
         `;
         
-        const logoUrl = chrome.runtime.getURL('M82-logo-16.png');
-        
+        const logoUrl = _extensionAPI.runtime.getURL('M82-logo-16.png');  
+      
         detailsModal.innerHTML = `
             <div style="background: white; padding: 30px; border-radius: 20px; max-width: 600px; max-height: 90vh; overflow-y: auto; margin: 20px; box-shadow: 0 25px 50px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out;">
                 
@@ -561,7 +563,7 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                 animation: fadeIn 0.3s ease-out !important;
             `;
 
-            const logoUrl = chrome.runtime.getURL('M82-logo-16.png');
+            const logoUrl = _extensionAPI.runtime.getURL('M82-logo-16.png');
             
             // Construire le contenu avec alerte site suspect si nécessaire
             let suspiciousAlert = '';
