@@ -387,7 +387,7 @@ class SuspiciousSitesManager {
     } else if (platform === 'YouTube') {
       // youtube.com/@username ou youtube.com/c/username
       const match = pathname.match(/^\/([@c]\/)?([a-zA-Z0-9_-]+)(?:\/|$|\?)/);
-      if (match) extractedHandle = match[2].toLowerCase();
+      if (match) extractedHandle = match[1].toLowerCase();
     } else if (platform === 'Facebook') {
       // facebook.com/username
       const match = pathname.match(/^\/([a-zA-Z0-9._-]+)(?:\/|$|\?)/);
@@ -434,8 +434,7 @@ class SuspiciousSitesManager {
         },
         youtube: {
           domains: ['youtube.com'],
-          regex: /^\/([@c]\/)?([a-zA-Z0-9_-]+)(?:\/|$|\?)/
-        },
+          regex: /^\/(?:@|c\/|user\/)?([a-zA-Z0-9_-]+)(?:\/|$|\?)/        },
         telegram: {
           domains: ['t.me', 'telegram.me'],
           regex: /^\/([a-zA-Z0-9_]+)(?:\/|$|\?)/
@@ -463,7 +462,7 @@ class SuspiciousSitesManager {
       // Extraire le handle
       const match = pathname.match(pattern.regex);
       if (match) {
-        const handle = accountType.toLowerCase() === 'youtube' ? (match[2] || match[1]) : match[1];
+        const handle = match[1];
         console.log(`DIMA: Handle extrait de ${accountType}: ${handle}`);
         return handle;
       }
