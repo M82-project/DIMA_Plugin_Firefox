@@ -8,27 +8,7 @@
 // PARTIE 1: DÉTECTION DE SITES SUSPECTS (NOUVEAU)
 // ============================================================================
 
-/**
- * Vérifie si le site actuel est dans la liste des sites suspects
- * Cette fonction est fournie par suspiciousSitesManager.js
- * et fonctionne automatiquement dès le chargement de la page
- */
-function checkCurrentSiteInSuspiciousList() {
-  const currentUrl = window.location.href;
-  
-  // Utiliser la fonction fournie par suspiciousSitesManager.js
-  const result = checkSuspiciousSite(currentUrl);
-  
-  if (result.isSuspicious) {
-    console.log('⚠️ DIMA: Site suspect détecté!');
-    console.log('Source:', result.siteInfo.source);
-    console.log('Raison:', result.siteInfo.reason);
-    console.log('Niveau de risque:', result.siteInfo.riskLevel);
-    
-    // Afficher une alerte visuelle
-    showSuspiciousSiteAlert(result);
-  }
-}
+
 
 /**
  * Affiche une alerte pour un site suspect
@@ -243,10 +223,16 @@ function checkDependencies() {
 }
 
 // Initialiser avec retry si nécessaire
-function initializeDIMA() {
+function initializeDIMA(retryCount = 0) {
+  const MAX_RETRIES = 30; // 3 secondes max (30 × 100ms)
+
   if (!checkDependencies()) {
-    console.log("DIMA: Attente du chargement des dépendances...");
-    setTimeout(initializeDIMA, 100);
+    if (retryCount >= MAX_RETRIES) {
+      console.error("DIMA: Échec du chargement des dépendances après 3 secondes.");
+      return;
+    }
+    console.log(`DIMA: Attente du chargement des dépendances... (${retryCount + 1}/${MAX_RETRIES})`);
+    setTimeout(() => initializeDIMA(retryCount + 1), 100);
     return;
   }
 
