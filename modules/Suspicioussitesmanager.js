@@ -387,7 +387,7 @@ class SuspiciousSitesManager {
     } else if (platform === 'YouTube') {
       // youtube.com/@username ou youtube.com/c/username
       const match = pathname.match(/^\/([@c]\/)?([a-zA-Z0-9_-]+)(?:\/|$|\?)/);
-      if (match) extractedHandle = match[1].toLowerCase();
+      if (match) extractedHandle = match[2].toLowerCase();
     } else if (platform === 'Facebook') {
       // facebook.com/username
       const match = pathname.match(/^\/([a-zA-Z0-9._-]+)(?:\/|$|\?)/);
