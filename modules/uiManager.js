@@ -372,13 +372,13 @@ class UIManager {
         actions.style.cssText = 'display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;';
 
         if (this.isSafeHttpUrl(siteInfo.reportUrl)) {
-            const reportBtn = document.createElement('button');
-            reportBtn.style.cssText = 'background: #3498db; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.3s; box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);';
-            reportBtn.textContent = '📄 Consulter le rapport complet';
-            reportBtn.addEventListener('click', () => {
-                window.open(siteInfo.reportUrl, '_blank', 'noopener,noreferrer');
-            });
-            actions.appendChild(reportBtn);
+            const reportLink = document.createElement('a');
+            reportLink.href = siteInfo.reportUrl;
+            reportLink.target = '_blank';
+            reportLink.rel = 'noopener noreferrer';
+            reportLink.style.cssText = 'background: #3498db; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.3s; box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3); text-decoration: none; display: inline-block;';
+            reportLink.textContent = '📄 Consulter le rapport complet';
+            actions.appendChild(reportLink);
         }
 
         const closeBtn = document.createElement('button');
@@ -386,17 +386,54 @@ class UIManager {
         closeBtn.setAttribute('aria-label', 'Fermer la fenêtre de détails');
         closeBtn.style.cssText = 'background: #95a5a6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.3s;';
         closeBtn.textContent = 'Fermer';
-        const closeModal = () => {
-            detailsModal.remove();
+
+        let cleanedUp = false;
+        const cleanup = () => {
+            if (cleanedUp) return;
+            cleanedUp = true;
             document.removeEventListener('keydown', onKeyDown);
+            removalObserver.disconnect();
             if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
                 previouslyFocused.focus();
             }
         };
+        const closeModal = () => {
+            if (detailsModal.isConnected) detailsModal.remove();
+            cleanup();
+        };
+        // Self-cleaning teardown: si le modal est retiré du DOM par un autre
+        // chemin (ex: showModal() qui rappelle ?.remove()), on nettoie quand
+        // même le keydown listener et restaure le focus.
+        const removalObserver = new MutationObserver(() => {
+            if (!document.contains(detailsModal)) cleanup();
+        });
+        removalObserver.observe(document.body, { childList: true, subtree: true });
+
+        // Focus trap: garde le focus à l'intérieur du dialog.
         const onKeyDown = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
                 closeModal();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            const focusables = detailsModal.querySelectorAll(
+                'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            );
+            if (focusables.length === 0) {
+                e.preventDefault();
+                detailsModal.focus();
+                return;
+            }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            const active = document.activeElement;
+            if (e.shiftKey && (active === first || !detailsModal.contains(active))) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && (active === last || !detailsModal.contains(active))) {
+                e.preventDefault();
+                first.focus();
             }
         };
         closeBtn.addEventListener('click', closeModal);
@@ -687,21 +724,23 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
             const logoUrl = _extensionAPI.runtime.getURL('M82-logo-16.png');
             
             // Construire le contenu avec alerte site suspect si nécessaire
+            // Note : les valeurs page-controlled (title, url) et user-DB-controlled
+            // (riskConfig.label/message, siteInfo.*) sont injectées via textContent
+            // après l'innerHTML pour éviter toute injection HTML.
             let suspiciousAlert = '';
+            let suspiciousSafeColor = '';
             if (this.suspiciousSiteCheck.isSuspicious) {
-                const { riskConfig, siteInfo } = this.suspiciousSiteCheck;
+                suspiciousSafeColor = this.sanitizeHexColor(this.suspiciousSiteCheck.riskConfig.color);
                 suspiciousAlert = `
-                    <div style="background: linear-gradient(135deg, ${riskConfig.color}, ${this.adjustColor(riskConfig.color, -15)}); color: white; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 2px solid rgba(255,255,255,0.2);">
+                    <div style="background: linear-gradient(135deg, ${suspiciousSafeColor}, ${this.adjustColor(suspiciousSafeColor, -15)}); color: white; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 2px solid rgba(255,255,255,0.2);">
                         <div style="display: flex; align-items: start; gap: 12px;">
-                            <span style="font-size: 28px;">${riskConfig.icon}</span>
+                            <span style="font-size: 28px;" data-dima-placeholder="suspicious-icon"></span>
                             <div style="flex: 1;">
-                                <h3 style="margin: 0 0 8px 0; font-size: 1.2em;">${riskConfig.label}</h3>
-                                <p style="margin: 0 0 12px 0; font-size: 0.95em; line-height: 1.5;">
-                                    ${riskConfig.message}
-                                </p>
-                                <button onclick="document.getElementById('dima-suspicious-details-modal')?.remove(); document.querySelector('#dima-modal .suspicious-details-btn').click()" 
+                                <h3 style="margin: 0 0 8px 0; font-size: 1.2em;" data-dima-placeholder="suspicious-label"></h3>
+                                <p style="margin: 0 0 12px 0; font-size: 0.95em; line-height: 1.5;" data-dima-placeholder="suspicious-message"></p>
+                                <button type="button"
                                         class="suspicious-details-btn"
-                                        style="background: white; color: ${riskConfig.color}; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+                                        style="background: white; color: ${suspiciousSafeColor}; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
                                     Voir les détails du rapport →
                                 </button>
                             </div>
@@ -756,8 +795,8 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                     <!-- Informations sur la page -->
                     <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #e9ecef;">
                         <h4 style="margin: 0 0 10px 0; color: #2c3e50; font-size: 1.1em;">📄 Page analysée</h4>
-                        <div style="font-weight: 500; margin-bottom: 8px; line-height: 1.4;">${this.analysisResults.title}</div>
-                        <div style="color: #666; font-size: 0.9em; word-break: break-all; margin-bottom: 8px;">${this.analysisResults.url}</div>
+                        <div style="font-weight: 500; margin-bottom: 8px; line-height: 1.4;" data-dima-placeholder="page-title"></div>
+                        <div style="color: #666; font-size: 0.9em; word-break: break-all; margin-bottom: 8px;" data-dima-placeholder="page-url"></div>
                         <div style="color: #888; font-size: 0.85em;">
                             Analysé le ${new Date(this.analysisResults.timestamp).toLocaleString('fr-FR')} • 
                             ${this.analysisResults.analyzedText} caractères traités • Type: ${this.pageType}
@@ -858,11 +897,25 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                 </div>
             `;
 
+            // Injection sûre des valeurs page-controlled / DB-controlled
+            // via textContent (jamais innerHTML) — évite tout XSS.
+            const setPlaceholder = (key, value) => {
+                const el = modal.querySelector(`[data-dima-placeholder="${key}"]`);
+                if (el) el.textContent = value == null ? '' : String(value);
+            };
+            setPlaceholder('page-title', this.analysisResults.title);
+            setPlaceholder('page-url', this.analysisResults.url);
+            if (this.suspiciousSiteCheck.isSuspicious) {
+                const { riskConfig } = this.suspiciousSiteCheck;
+                setPlaceholder('suspicious-icon', riskConfig.icon || '⚠️');
+                setPlaceholder('suspicious-label', riskConfig.label || '');
+                setPlaceholder('suspicious-message', riskConfig.message || '');
+            }
+
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) modal.remove();
             });
-            
-            // Ajouter l'événement pour le bouton des détails du site suspect
+
             modal.querySelector('.suspicious-details-btn')?.addEventListener('click', () => {
                 this.showSuspiciousSiteDetails();
             });
