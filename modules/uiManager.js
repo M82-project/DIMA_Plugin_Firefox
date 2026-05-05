@@ -391,8 +391,7 @@ class UIManager {
         const cleanup = () => {
             if (cleanedUp) return;
             cleanedUp = true;
-            document.removeEventListener('keydown', onKeyDown);
-            removalObserver.disconnect();
+            document.removeEventListener('keydown', onKeyDown, true);
             if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
                 previouslyFocused.focus();
             }
@@ -401,18 +400,14 @@ class UIManager {
             if (detailsModal.isConnected) detailsModal.remove();
             cleanup();
         };
-        // Self-cleaning teardown: si le modal est retiré du DOM par un autre
-        // chemin (ex: showModal() qui rappelle ?.remove()), on nettoie quand
-        // même le keydown listener et restaure le focus.
-        const removalObserver = new MutationObserver(() => {
-            if (!document.contains(detailsModal)) cleanup();
-        });
-        removalObserver.observe(document.body, { childList: true, subtree: true });
 
         // Focus trap: garde le focus à l'intérieur du dialog.
+        // Capture phase + stopPropagation pour empêcher les raccourcis
+        // globaux de la page hôte (Escape, Tab) de se déclencher.
         const onKeyDown = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
+                e.stopPropagation();
                 closeModal();
                 return;
             }
@@ -422,6 +417,7 @@ class UIManager {
             );
             if (focusables.length === 0) {
                 e.preventDefault();
+                e.stopPropagation();
                 detailsModal.focus();
                 return;
             }
@@ -430,10 +426,16 @@ class UIManager {
             const active = document.activeElement;
             if (e.shiftKey && (active === first || !detailsModal.contains(active))) {
                 e.preventDefault();
+                e.stopPropagation();
                 last.focus();
             } else if (!e.shiftKey && (active === last || !detailsModal.contains(active))) {
                 e.preventDefault();
+                e.stopPropagation();
                 first.focus();
+            } else {
+                // Tab à l'intérieur du dialog : on laisse le navigateur faire,
+                // mais on empêche la page hôte d'intercepter.
+                e.stopPropagation();
             }
         };
         closeBtn.addEventListener('click', closeModal);
@@ -459,7 +461,7 @@ class UIManager {
         detailsModal.addEventListener('click', (e) => {
             if (e.target === detailsModal) closeModal();
         });
-        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keydown', onKeyDown, true);
 
         document.body.appendChild(detailsModal);
         closeBtn.focus();
