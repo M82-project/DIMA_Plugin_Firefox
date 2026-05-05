@@ -13,8 +13,19 @@
 /**
  * Affiche une alerte pour un site suspect
  */
+function isSafeHttpUrl(url) {
+  try {
+    const parsed = new URL(url, window.location.href);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch (_) {
+    return false;
+  }
+}
+
 function showSuspiciousSiteAlert(result) {
-  // Créer un bandeau d'alerte en haut de la page
+  const color = String(result.riskConfig.color || '#c0392b');
+  const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(color) ? color : '#c0392b';
+
   const alertBanner = document.createElement('div');
   alertBanner.id = 'dima-suspicious-site-alert';
   alertBanner.style.cssText = `
@@ -22,7 +33,7 @@ function showSuspiciousSiteAlert(result) {
     top: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(135deg, ${result.riskConfig.color}, ${result.riskConfig.color}dd);
+    background: linear-gradient(135deg, ${safeColor}, ${safeColor}dd);
     color: white;
     padding: 15px 20px;
     z-index: 999999;
@@ -34,37 +45,56 @@ function showSuspiciousSiteAlert(result) {
     animation: slideDown 0.5s ease-out;
   `;
 
-  alertBanner.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 15px; flex: 1;">
-      <span style="font-size: 24px;">${result.riskConfig.icon}</span>
-      <div>
-        <div style="font-weight: bold; font-size: 16px; margin-bottom: 5px;">
-          ${result.riskConfig.label} - ${result.siteInfo.source}
-        </div>
-        <div style="font-size: 14px; opacity: 0.95;">
-          ${result.siteInfo.reason}
-        </div>
-        <a href="${result.siteInfo.reportUrl}" target="_blank" 
-           style="color: white; text-decoration: underline; font-size: 13px; margin-top: 5px; display: inline-block;">
-          → Consulter le rapport source
-        </a>
-      </div>
-    </div>
-    <button id="dima-close-alert" style="
-      background: rgba(255,255,255,0.2);
-      border: 1px solid rgba(255,255,255,0.3);
-      color: white;
-      padding: 8px 15px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: background 0.3s;
-    ">
-      ✕ Fermer
-    </button>
-  `;
+  const contentWrapper = document.createElement('div');
+  contentWrapper.style.cssText = 'display: flex; align-items: center; gap: 15px; flex: 1;';
 
-  // Animation CSS
+  const iconSpan = document.createElement('span');
+  iconSpan.style.fontSize = '24px';
+  iconSpan.textContent = result.riskConfig.icon || '⚠️';
+
+  const textBlock = document.createElement('div');
+
+  const titleDiv = document.createElement('div');
+  titleDiv.style.cssText = 'font-weight: bold; font-size: 16px; margin-bottom: 5px;';
+  titleDiv.textContent = `${result.riskConfig.label || ''} - ${result.siteInfo.source || ''}`;
+
+  const reasonDiv = document.createElement('div');
+  reasonDiv.style.cssText = 'font-size: 14px; opacity: 0.95;';
+  reasonDiv.textContent = result.siteInfo.reason || '';
+
+  textBlock.appendChild(titleDiv);
+  textBlock.appendChild(reasonDiv);
+
+  if (isSafeHttpUrl(result.siteInfo.reportUrl)) {
+    const reportLink = document.createElement('a');
+    reportLink.href = result.siteInfo.reportUrl;
+    reportLink.target = '_blank';
+    reportLink.rel = 'noopener noreferrer';
+    reportLink.style.cssText = 'color: white; text-decoration: underline; font-size: 13px; margin-top: 5px; display: inline-block;';
+    reportLink.textContent = '→ Consulter le rapport source';
+    textBlock.appendChild(reportLink);
+  }
+
+  contentWrapper.appendChild(iconSpan);
+  contentWrapper.appendChild(textBlock);
+
+  const closeButton = document.createElement('button');
+  closeButton.id = 'dima-close-alert';
+  closeButton.style.cssText = `
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.3s;
+  `;
+  closeButton.textContent = '✕ Fermer';
+
+  alertBanner.appendChild(contentWrapper);
+  alertBanner.appendChild(closeButton);
+
   const style = document.createElement('style');
   style.textContent = `
     @keyframes slideDown {
@@ -83,16 +113,13 @@ function showSuspiciousSiteAlert(result) {
   `;
   document.head.appendChild(style);
 
-  // Ajouter au body
   document.body.insertBefore(alertBanner, document.body.firstChild);
 
-  // Gérer la fermeture
-  document.getElementById('dima-close-alert').addEventListener('click', () => {
+  closeButton.addEventListener('click', () => {
     alertBanner.style.animation = 'slideDown 0.3s ease-out reverse';
     setTimeout(() => alertBanner.remove(), 300);
   });
 
-  // Ajuster le padding du body pour ne pas cacher le contenu
   document.body.style.paddingTop = `${alertBanner.offsetHeight}px`;
 }
 
