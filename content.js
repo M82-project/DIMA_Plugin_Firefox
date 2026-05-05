@@ -14,8 +14,11 @@
  * Affiche une alerte pour un site suspect
  */
 function isSafeHttpUrl(url) {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    return false;
+  }
   try {
-    const parsed = new URL(url, window.location.href);
+    const parsed = new URL(url);
     return parsed.protocol === 'https:' || parsed.protocol === 'http:';
   } catch (_) {
     return false;
