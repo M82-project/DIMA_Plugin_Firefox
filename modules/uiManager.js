@@ -151,6 +151,8 @@ class UIManager {
 
         const closeBtn = document.createElement('button');
         closeBtn.id = 'dima-suspicious-close';
+        closeBtn.type = 'button';
+        closeBtn.setAttribute('aria-label', "Fermer l'alerte");
         closeBtn.style.cssText = `
             background: none;
             border: none;
@@ -220,8 +222,14 @@ class UIManager {
         const { siteInfo, riskConfig } = this.suspiciousSiteCheck;
         const safeColor = this.sanitizeHexColor(riskConfig.color);
 
+        const previouslyFocused = document.activeElement;
+
         const detailsModal = document.createElement('div');
         detailsModal.id = 'dima-suspicious-details-modal';
+        detailsModal.setAttribute('role', 'dialog');
+        detailsModal.setAttribute('aria-modal', 'true');
+        detailsModal.setAttribute('aria-labelledby', 'dima-suspicious-details-title');
+        detailsModal.tabIndex = -1;
         detailsModal.style.cssText = `
             position: fixed !important;
             top: 0 !important;
@@ -257,6 +265,7 @@ class UIManager {
         logoImg.addEventListener('error', () => { logoImg.style.display = 'none'; });
 
         const title = document.createElement('h2');
+        title.id = 'dima-suspicious-details-title';
         title.style.cssText = 'color: #2c3e50; margin: 0; font-size: 1.8em;';
         title.textContent = 'Site Suspect Identifié';
 
@@ -373,9 +382,24 @@ class UIManager {
         }
 
         const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.setAttribute('aria-label', 'Fermer la fenêtre de détails');
         closeBtn.style.cssText = 'background: #95a5a6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500; transition: all 0.3s;';
         closeBtn.textContent = 'Fermer';
-        closeBtn.addEventListener('click', () => detailsModal.remove());
+        const closeModal = () => {
+            detailsModal.remove();
+            document.removeEventListener('keydown', onKeyDown);
+            if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+                previouslyFocused.focus();
+            }
+        };
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeModal();
+            }
+        };
+        closeBtn.addEventListener('click', closeModal);
         actions.appendChild(closeBtn);
 
         const footer = document.createElement('div');
@@ -396,18 +420,19 @@ class UIManager {
         detailsModal.appendChild(card);
 
         detailsModal.addEventListener('click', (e) => {
-            if (e.target === detailsModal) detailsModal.remove();
+            if (e.target === detailsModal) closeModal();
         });
+        document.addEventListener('keydown', onKeyDown);
 
         document.body.appendChild(detailsModal);
+        closeBtn.focus();
     }
 
     sanitizeHexColor(color) {
+        // Restreint à #RRGGBB car adjustColor() ne gère que ce format.
         const fallback = '#c0392b';
         if (typeof color !== 'string') return fallback;
-        return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(color)
-            ? color
-            : fallback;
+        return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
     }
 
     isSafeHttpUrl(url) {
