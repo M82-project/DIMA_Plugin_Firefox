@@ -16,15 +16,13 @@ npm run ci             # lint + tests + audit, mêmes étapes que le job `test`
                        # `web-ext lint` est en plus côté CI).
 ```
 
-> **Note sur le lockfile.** Tant que le lockfile committé n'a pas été
-> régénéré sur Linux (workaround npm/cli#4828), le job `test` de la CI
-> supprime `package-lock.json` avant `npm install` pour récupérer le bon
-> binaire natif Rollup pour la plateforme du runner. En local, sur
-> votre OS natif, `npm ci` (ou `npm install`) à partir du lockfile
-> committé fonctionne normalement — mais le graphe peut différer
-> légèrement de ce que la CI installe en semver. Pour réaligner les
-> deux, déclencher manuellement le workflow [`Regenerate package-lock.json`](../.github/workflows/regenerate-lockfile.yml)
-> qui ouvre une PR avec un lockfile régénéré sur Linux.
+> **Note sur le lockfile.** `package-lock.json` est cross-plateforme :
+> il contient les binaires natifs (Rollup, esbuild) pour Linux,
+> Windows, macOS, etc. — `npm ci` fonctionne donc sur n'importe quel
+> OS de contributeur ou de runner CI. Si jamais le lockfile dérive
+> vers un seul OS (bug [npm/cli#4828](https://github.com/npm/cli/issues/4828)),
+> déclencher manuellement le workflow [`Regenerate package-lock.json`](../.github/workflows/regenerate-lockfile.yml)
+> qui ouvre une PR avec un lockfile propre régénéré sur Linux.
 
 ## Structure
 
