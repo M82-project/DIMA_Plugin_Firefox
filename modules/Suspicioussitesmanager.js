@@ -564,6 +564,11 @@ let suspiciousSitesManager;
 
 // Initialiser après le chargement de toutes les bases de données
 if (typeof window !== 'undefined') {
+  // Expose la classe (utile pour les tests Vitest et pour le rechargement
+  // à chaud) — la classe n'a pas d'effet de bord, c'est l'instanciation
+  // plus bas qui charge les bases.
+  window.SuspiciousSitesManager = SuspiciousSitesManager;
+
   // Dans le navigateur, initialiser après un court délai pour laisser les autres fichiers se charger
   setTimeout(() => {
     suspiciousSitesManager = new SuspiciousSitesManager();

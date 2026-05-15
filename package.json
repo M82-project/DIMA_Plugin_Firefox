@@ -1,0 +1,25 @@
+{
+  "name": "dima-plugin-firefox",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Plugin Firefox DIMA (Digital Influence Manipulation Analyzer) — M82 Project",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "ci": "npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "happy-dom": "^20.9.0",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
