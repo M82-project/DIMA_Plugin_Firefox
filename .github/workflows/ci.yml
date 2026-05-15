@@ -28,7 +28,20 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm ci
+      - name: Install dependencies
+        # Workaround pour le bug npm/cli#4828 : un lockfile généré sur
+        # un seul OS peut omettre les optional deps natives des autres
+        # plateformes (ex. @rollup/rollup-linux-x64-gnu). `npm ci` est
+        # strict sur le lockfile et plante alors sur Ubuntu. On retombe
+        # sur une install fresh dans ce cas. Une fois qu'un contributeur
+        # aura régénéré le lockfile sur Linux (ou via Docker), `npm ci`
+        # passera en chemin nominal.
+        run: |
+          if ! npm ci; then
+            echo "::warning::npm ci a échoué — fallback sur npm install (npm/cli#4828)"
+            rm -rf node_modules package-lock.json
+            npm install
+          fi
 
       - name: Lint (ESLint)
         run: npm run lint
