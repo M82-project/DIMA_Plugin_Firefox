@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+dist/
+web-ext-artifacts/
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Réglages locaux de Claude Code (par développeur, ne doivent pas être versionnés)
+.claude/

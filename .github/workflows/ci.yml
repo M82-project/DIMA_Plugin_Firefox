@@ -16,78 +16,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  test:
+    name: Lint, test & audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Test (Vitest)
+        run: npm test
+
+      # Sécurité supply chain : fail si une vulnérabilité de niveau `high`
+      # ou `critical` est connue dans le graphe de dépendances. La base
+      # CVE GitHub Advisory est consultée à chaque run, on n'a rien à
+      # maintenir côté repo. L'arbre est 100% devDependencies, mais on
+      # audite tout : un outil de test compromis pourrait exfiltrer le code.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+  amo-lint:
     name: web-ext lint (Mozilla addons-linter)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
       - name: Run web-ext lint
         # Même linter que celui qu'AMO exécute à la soumission.
-        # Ignore .github, .claude, documentation, README — non packagés.
+        # On ignore les fichiers non-packagés pour éviter les faux positifs.
         run: |
           npx --yes web-ext@8 lint \
             --source-dir=. \
-            --ignore-files='.github/**' '.claude/**' 'documentation/**' '*.md' 'LICENSE'
-
-  syntax:
-    name: JavaScript syntax check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: node --check on all .js files
-        run: |
-          set -e
-          mapfile -t files < <(find . -name '*.js' \
-            -not -path './.git/*' \
-            -not -path './.github/*' \
-            -not -path './.claude/*' \
-            -not -path './node_modules/*')
-          echo "Checking ${#files[@]} files..."
-          fail=0
-          for f in "${files[@]}"; do
-            if ! node --check "$f"; then
-              echo "::error file=$f::Syntax error"
-              fail=1
-            fi
-          done
-          exit $fail
-
-  manifest:
-    name: Validate manifest.json
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Check required fields and extension ID
-        run: |
-          node -e "
-            const m = require('./manifest.json');
-            const required = ['manifest_version', 'name', 'version', 'description', 'browser_specific_settings'];
-            const missing = required.filter(k => !m[k]);
-            if (missing.length) {
-              console.error('::error::Missing required manifest fields:', missing.join(', '));
-              process.exit(1);
-            }
-            const id = m.browser_specific_settings?.gecko?.id;
-            const expected = 'dima@m82-project.org';
-            if (id !== expected) {
-              console.error(\`::error::Extension ID changed: '\${id}' (expected '\${expected}'). Modifying it would create an orphan AMO listing.\`);
-              process.exit(1);
-            }
-            // AMO accepte 1 à 4 composants numériques, mais on exige 3 ou 4
-            // (MAJOR.MINOR.PATCH[.BUILD]) pour rester aligné avec le SemVer
-            // déjà utilisé dans le projet (ex. 2.0.0).
-            if (!/^[0-9]+(\.[0-9]+){2,3}$/.test(m.version)) {
-              console.error(\`::error::Version '\${m.version}' is not a valid AMO version (must be MAJOR.MINOR.PATCH[.BUILD])\`);
-              process.exit(1);
-            }
-            console.log('manifest OK:', m.name, 'v' + m.version, '(ID:', id + ')');
-          "
+            --ignore-files='.github/**' '.claude/**' 'documentation/**' \
+                           'tests/**' 'node_modules/**' 'coverage/**' \
+                           'package.json' 'package-lock.json' \
+                           'eslint.config.js' 'vitest.config.js' \
+                           '*.md' 'LICENSE' '.gitignore'
