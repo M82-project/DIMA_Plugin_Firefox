@@ -11,9 +11,20 @@ npm run test:watch     # mode watch pour le dev
 npm run test:coverage  # avec rapport de couverture (text + html + lcov)
 npm run lint           # ESLint
 npm run audit          # npm audit --audit-level=high
-npm run ci             # lint + tests + audit (= job `test` de GitHub Actions ;
-                       #  le job `amo-lint` (web-ext lint) est en plus côté CI)
+npm run ci             # lint + tests + audit, mêmes étapes que le job `test`
+                       # de GitHub Actions (le job `amo-lint` qui tourne
+                       # `web-ext lint` est en plus côté CI).
 ```
+
+> **Note sur le lockfile.** Tant que le lockfile committé n'a pas été
+> régénéré sur Linux (workaround npm/cli#4828), le job `test` de la CI
+> supprime `package-lock.json` avant `npm install` pour récupérer le bon
+> binaire natif Rollup pour la plateforme du runner. En local, sur
+> votre OS natif, `npm ci` (ou `npm install`) à partir du lockfile
+> committé fonctionne normalement — mais le graphe peut différer
+> légèrement de ce que la CI installe en semver. Pour réaligner les
+> deux, déclencher manuellement le workflow [`Regenerate package-lock.json`](../.github/workflows/regenerate-lockfile.yml)
+> qui ouvre une PR avec un lockfile régénéré sur Linux.
 
 ## Structure
 

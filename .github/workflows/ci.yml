@@ -29,16 +29,25 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        # Workaround pour le bug npm/cli#4828 : un lockfile généré sur
-        # un seul OS pinne les optional deps natives pour CET OS
-        # uniquement (ex. @rollup/rollup-win32-x64-msvc mais pas
+        # Workaround pour le bug npm/cli#4828 : un lockfile généré sur un
+        # seul OS pinne les optional deps natives pour CET OS uniquement
+        # (ex. @rollup/rollup-win32-x64-msvc mais pas
         # @rollup/rollup-linux-x64-gnu). `npm ci` ET `npm install`
         # honorent ce pinning et omettent silencieusement le binaire
         # Linux, après quoi Rollup plante au require().
-        # Fix : on supprime le lockfile pour forcer npm à reconstruire
-        # l'arbre depuis package.json sur la plateforme courante. Le
-        # lockfile reste utile pour les contributeurs locaux ; la
-        # version CI est jetée à la fin du run.
+        #
+        # On supprime donc le lockfile pour forcer npm à reconstruire
+        # l'arbre depuis package.json sur la plateforme du runner. Le
+        # lockfile committé reste utile pour les contributeurs locaux
+        # sur leur OS natif ; la version CI est jetée à la fin du run.
+        #
+        # Trade-off connu (cf. Copilot review PR #6) : CI ne vérifie
+        # plus que le lockfile committé est utilisable, et installe une
+        # résolution semver plutôt que le graphe exact figé. Le step
+        # `npm audit --audit-level=high` ci-dessous reste effectif sur
+        # le graphe installé. Le chemin propre vers `npm ci` strict :
+        # déclencher le workflow `Regenerate package-lock.json` (manuel)
+        # qui régénère le lockfile sur Linux et ouvre une PR.
         run: |
           rm -f package-lock.json
           npm install --no-audit
