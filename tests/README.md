@@ -10,7 +10,8 @@ npm test               # un seul run
 npm run test:watch     # mode watch pour le dev
 npm run test:coverage  # avec rapport de couverture (text + html + lcov)
 npm run lint           # ESLint
-npm run ci             # lint + tests (= ce que tourne GitHub Actions)
+npm run audit          # npm audit --audit-level=high
+npm run ci             # lint + tests + audit (= ce que tourne GitHub Actions)
 ```
 
 ## Structure

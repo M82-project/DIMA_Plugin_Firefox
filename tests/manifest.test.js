@@ -19,7 +19,9 @@ describe('manifest.json', () => {
 
   it('has a non-empty name, version, description', () => {
     expect(manifest.name).toBeTruthy();
-    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
+    // AMO accepte MAJOR.MINOR.PATCH ou MAJOR.MINOR.PATCH.BUILD — aligné avec
+    // la regex de validation utilisée côté CI (.github/workflows/ci.yml).
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(\.\d+)?$/);
     expect(manifest.description).toBeTruthy();
   });
 
