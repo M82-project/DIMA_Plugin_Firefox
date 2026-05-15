@@ -30,14 +30,18 @@ jobs:
 
       - name: Install dependencies
         # Workaround pour le bug npm/cli#4828 : un lockfile généré sur
-        # un seul OS omet silencieusement les optional deps natives des
-        # autres plateformes (ex. @rollup/rollup-linux-x64-gnu). `npm ci`
-        # exit 0 mais Rollup plante au require — d'où l'utilisation de
-        # `npm install` qui, lui, complète le lockfile à la volée avec
-        # le binaire manquant pour la plateforme courante. Le lockfile
-        # reste utile pour les contributeurs locaux ; la version CI est
-        # patchée en mémoire et jetée à la fin du run.
-        run: npm install --no-audit
+        # un seul OS pinne les optional deps natives pour CET OS
+        # uniquement (ex. @rollup/rollup-win32-x64-msvc mais pas
+        # @rollup/rollup-linux-x64-gnu). `npm ci` ET `npm install`
+        # honorent ce pinning et omettent silencieusement le binaire
+        # Linux, après quoi Rollup plante au require().
+        # Fix : on supprime le lockfile pour forcer npm à reconstruire
+        # l'arbre depuis package.json sur la plateforme courante. Le
+        # lockfile reste utile pour les contributeurs locaux ; la
+        # version CI est jetée à la fin du run.
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit
 
       - name: Lint (ESLint)
         run: npm run lint
