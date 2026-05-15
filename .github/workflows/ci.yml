@@ -30,18 +30,14 @@ jobs:
 
       - name: Install dependencies
         # Workaround pour le bug npm/cli#4828 : un lockfile généré sur
-        # un seul OS peut omettre les optional deps natives des autres
-        # plateformes (ex. @rollup/rollup-linux-x64-gnu). `npm ci` est
-        # strict sur le lockfile et plante alors sur Ubuntu. On retombe
-        # sur une install fresh dans ce cas. Une fois qu'un contributeur
-        # aura régénéré le lockfile sur Linux (ou via Docker), `npm ci`
-        # passera en chemin nominal.
-        run: |
-          if ! npm ci; then
-            echo "::warning::npm ci a échoué — fallback sur npm install (npm/cli#4828)"
-            rm -rf node_modules package-lock.json
-            npm install
-          fi
+        # un seul OS omet silencieusement les optional deps natives des
+        # autres plateformes (ex. @rollup/rollup-linux-x64-gnu). `npm ci`
+        # exit 0 mais Rollup plante au require — d'où l'utilisation de
+        # `npm install` qui, lui, complète le lockfile à la volée avec
+        # le binaire manquant pour la plateforme courante. Le lockfile
+        # reste utile pour les contributeurs locaux ; la version CI est
+        # patchée en mémoire et jetée à la fin du run.
+        run: npm install --no-audit
 
       - name: Lint (ESLint)
         run: npm run lint
