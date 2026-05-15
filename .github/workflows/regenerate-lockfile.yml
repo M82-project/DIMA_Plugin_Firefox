@@ -52,4 +52,4 @@ jobs:
           git push origin "$BRANCH"
           gh pr create --base main --head "$BRANCH" \
             --title 'chore: regenerate package-lock.json on Linux' \
-            --body 'Régénération automatique du lockfile sur Linux (workaround npm/cli#4828). Une fois cette PR mergée, on peut revenir à `npm ci` dans `.github/workflows/ci.yml`.'
+            --body 'Régénération automatique de `package-lock.json` sur Linux via le workflow `Regenerate package-lock.json` (workaround npm/cli#4828). Si CI passe, le lockfile committé est cross-plateforme et utilisable par `npm ci` sur Linux / Windows / macOS.'
