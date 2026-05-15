@@ -11,7 +11,8 @@ npm run test:watch     # mode watch pour le dev
 npm run test:coverage  # avec rapport de couverture (text + html + lcov)
 npm run lint           # ESLint
 npm run audit          # npm audit --audit-level=high
-npm run ci             # lint + tests + audit (= ce que tourne GitHub Actions)
+npm run ci             # lint + tests + audit (= job `test` de GitHub Actions ;
+                       #  le job `amo-lint` (web-ext lint) est en plus côté CI)
 ```
 
 ## Structure
