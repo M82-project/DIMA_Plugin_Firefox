@@ -10,8 +10,19 @@ npm test               # un seul run
 npm run test:watch     # mode watch pour le dev
 npm run test:coverage  # avec rapport de couverture (text + html + lcov)
 npm run lint           # ESLint
-npm run ci             # lint + tests (= ce que tourne GitHub Actions)
+npm run audit          # npm audit --audit-level=high
+npm run ci             # lint + tests + audit, mêmes étapes que le job `test`
+                       # de GitHub Actions (le job `amo-lint` qui tourne
+                       # `web-ext lint` est en plus côté CI).
 ```
+
+> **Note sur le lockfile.** `package-lock.json` est cross-plateforme :
+> il contient les binaires natifs (Rollup, esbuild) pour Linux,
+> Windows, macOS, etc. — `npm ci` fonctionne donc sur n'importe quel
+> OS de contributeur ou de runner CI. Si jamais le lockfile dérive
+> vers un seul OS (bug [npm/cli#4828](https://github.com/npm/cli/issues/4828)),
+> déclencher manuellement le workflow [`Regenerate package-lock.json`](../.github/workflows/regenerate-lockfile.yml)
+> qui ouvre une PR avec un lockfile propre régénéré sur Linux.
 
 ## Structure
 
