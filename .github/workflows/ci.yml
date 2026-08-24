@@ -5,12 +5,9 @@ on:
   push:
     branches: [main]
 
-# Principe du moindre privilège pour GITHUB_TOKEN : ces jobs n'ont besoin
-# que de lire le code source.
 permissions:
   contents: read
 
-# Annule les runs précédents sur la même PR si un nouveau push arrive.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -20,12 +17,14 @@ jobs:
     name: Lint, test & audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - run: npm ci
@@ -36,11 +35,6 @@ jobs:
       - name: Test (Vitest)
         run: npm test
 
-      # Sécurité supply chain : fail si une vulnérabilité de niveau `high`
-      # ou `critical` est connue dans le graphe de dépendances. La base
-      # CVE GitHub Advisory est consultée à chaque run, on n'a rien à
-      # maintenir côté repo. L'arbre est 100% devDependencies, mais on
-      # audite tout : un outil de test compromis pourrait exfiltrer le code.
       - name: Audit dependencies
         run: npm audit --audit-level=high
 
@@ -48,13 +42,15 @@ jobs:
     name: web-ext lint (Mozilla addons-linter)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          node-version: '20'
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
       - name: Run web-ext lint
-        # Même linter que celui qu'AMO exécute à la soumission.
-        # On ignore les fichiers non-packagés pour éviter les faux positifs.
         run: |
           npx --yes web-ext@8 lint \
             --source-dir=. \

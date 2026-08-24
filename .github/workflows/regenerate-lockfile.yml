@@ -17,17 +17,17 @@ jobs:
   regenerate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # persist-credentials volontairement laissé à true : ce job pousse une
+      # branche et ouvre une PR, il a besoin du token dans .git/config.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0 # zizmor: ignore[artipacked]
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Regenerate package-lock.json on Linux
         run: |
           rm -f package-lock.json
-          # --package-lock-only évite de remplir node_modules pour rien,
-          # on ne veut produire que le fichier de lock.
           npm install --package-lock-only --no-audit
 
       - name: Commit and push if changed
