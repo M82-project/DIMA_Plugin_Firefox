@@ -224,19 +224,28 @@ class UIManager {
         // pas forcerait un reflow et empêcherait les déplacements de se cumuler.
         let currentLeft = null;
         let currentTop = null;
+        // Taille du badge mise en cache: la remesurer à chaque pointermove
+        // forcerait un reflow par frame (on écrit transform, on lit le rect,
+        // on réécrit transform). Elle ne bouge pas pendant un geste.
+        let cachedSize = null;
 
         this._dragMoved = false;
 
-        const clamp = (left, top) => {
-            const rect = measureUntransformed();
-            return this.clampToViewport(
-                left,
-                top,
-                { width: rect.width, height: rect.height },
-                { width: window.innerWidth, height: window.innerHeight },
-                EDGE_MARGIN
-            );
+        const badgeSize = () => {
+            if (!cachedSize) {
+                const rect = measureUntransformed();
+                cachedSize = { width: rect.width, height: rect.height };
+            }
+            return cachedSize;
         };
+
+        const clamp = (left, top) => this.clampToViewport(
+            left,
+            top,
+            badgeSize(),
+            { width: window.innerWidth, height: window.innerHeight },
+            EDGE_MARGIN
+        );
 
         const applyPosition = (left, top) => {
             currentLeft = left;
@@ -414,6 +423,7 @@ class UIManager {
         };
 
         const onResize = () => {
+            cachedSize = null;  // la taille peut changer avec le zoom / la police
             if (currentLeft === null) {
                 // Badge encore ancré à droite: il suit le bord tout seul. On
                 // n'intervient que s'il sort réellement du viewport (fenêtre
