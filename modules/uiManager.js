@@ -164,6 +164,230 @@ class UIManager {
         }
     }
 
+    /**
+     * Contraint une position au viewport, en gardant une marge aux bords.
+     * Fonction pure (aucune lecture du DOM) pour rester testable.
+     */
+    clampToViewport(left, top, size, viewport, margin = 4) {
+        const width = Number.isFinite(size?.width) ? size.width : 0;
+        const height = Number.isFinite(size?.height) ? size.height : 0;
+        const viewWidth = Number.isFinite(viewport?.width) ? viewport.width : 0;
+        const viewHeight = Number.isFinite(viewport?.height) ? viewport.height : 0;
+
+        const maxLeft = Math.max(margin, viewWidth - width - margin);
+        const maxTop = Math.max(margin, viewHeight - height - margin);
+
+        return {
+            left: Number.isFinite(left) ? Math.min(Math.max(margin, left), maxLeft) : margin,
+            top: Number.isFinite(top) ? Math.min(Math.max(margin, top), maxTop) : margin,
+        };
+    }
+
+    /**
+     * Rend le badge de score déplaçable à la souris, au doigt et au clavier.
+     *
+     * Pointer Events plutôt que mousedown/mousemove: un seul jeu de handlers
+     * couvre souris et tactile, et `setPointerCapture` garde le drag vivant
+     * quand le curseur sort du badge ou de la fenêtre.
+     *
+     * Les deux gestes cohabitent grâce au seuil MOVE_THRESHOLD: en dessous,
+     * l'appui reste un clic; au-dessus, il devient un déplacement et le
+     * `click` final est neutralisé via `this._dragMoved` (voir createButton).
+     */
+    makeDraggable(el) {
+        const MOVE_THRESHOLD = 4;
+        const EDGE_MARGIN = 4;
+        const STORAGE_KEY = 'dima:badgePosition';
+        const SAVE_DEBOUNCE_MS = 200;
+
+        let activePointerId = null;
+        let startX = 0, startY = 0;
+        let originLeft = 0, originTop = 0;
+        let savedTransition = null;
+        let savedTransitionPriority = '';
+        let saveTimer = null;
+        // Position courante en mémoire: relire getBoundingClientRect à chaque
+        // pas forcerait un reflow et empêcherait les déplacements de se cumuler.
+        let currentLeft = null;
+        let currentTop = null;
+
+        this._dragMoved = false;
+
+        const clamp = (left, top) => {
+            const rect = el.getBoundingClientRect();
+            return this.clampToViewport(
+                left,
+                top,
+                { width: rect.width, height: rect.height },
+                { width: window.innerWidth, height: window.innerHeight },
+                EDGE_MARGIN
+            );
+        };
+
+        const applyPosition = (left, top) => {
+            currentLeft = left;
+            currentTop = top;
+            el.style.setProperty('left', `${left}px`, 'important');
+            el.style.setProperty('top', `${top}px`, 'important');
+        };
+
+        // Le badge est posé en `right`. On bascule en `left` absolu depuis sa
+        // position rendue, pour qu'il ne saute pas au premier pixel.
+        const pinToLeftTop = () => {
+            const rect = el.getBoundingClientRect();
+            el.style.setProperty('right', 'auto', 'important');
+            el.style.setProperty('bottom', 'auto', 'important');
+            applyPosition(rect.left, rect.top);
+            return rect;
+        };
+
+        // Position globale (pas par domaine): rangée une fois, valable partout.
+        const savePosition = () => {
+            const position = { left: currentLeft, top: currentTop };
+            if (!Number.isFinite(position.left) || !Number.isFinite(position.top)) return;
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => {
+                try {
+                    _extensionAPI?.storage?.local?.set({ [STORAGE_KEY]: position });
+                } catch (error) {
+                    this.log('Position du badge non sauvegardée', error);
+                }
+            }, SAVE_DEBOUNCE_MS);
+        };
+
+        const restorePosition = async () => {
+            try {
+                const stored = await _extensionAPI?.storage?.local?.get(STORAGE_KEY);
+                const saved = stored?.[STORAGE_KEY];
+                if (!saved || !Number.isFinite(saved.left) || !Number.isFinite(saved.top)) {
+                    return;
+                }
+                el.style.setProperty('right', 'auto', 'important');
+                el.style.setProperty('bottom', 'auto', 'important');
+                const { left, top } = clamp(saved.left, saved.top);
+                applyPosition(left, top);
+            } catch (error) {
+                this.log('Position du badge non restaurée', error);
+            }
+        };
+
+        const onPointerDown = (e) => {
+            if (e.button > 0) return;
+
+            activePointerId = e.pointerId;
+            try {
+                el.setPointerCapture(activePointerId);
+            } catch {
+                // Navigateur sans capture: le drag marche tant que le curseur
+                // reste sur le badge.
+            }
+
+            const rect = pinToLeftTop();
+            originLeft = rect.left;
+            originTop = rect.top;
+            startX = e.clientX;
+            startY = e.clientY;
+            this._dragMoved = false;
+
+            // `transition: all 0.3s` s'appliquerait à left/top: sans cette
+            // coupure le badge traîne derrière le curseur.
+            savedTransition = el.style.getPropertyValue('transition');
+            savedTransitionPriority = el.style.getPropertyPriority('transition');
+            el.style.setProperty('transition', 'none', 'important');
+            el.style.setProperty('cursor', 'grabbing', 'important');
+        };
+
+        const onPointerMove = (e) => {
+            if (activePointerId === null || e.pointerId !== activePointerId) return;
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            if (!this._dragMoved && Math.hypot(dx, dy) < MOVE_THRESHOLD) return;
+
+            this._dragMoved = true;
+            e.preventDefault();
+
+            // Le survol pose un scale()/translateY() qui ferait flotter le
+            // badge à côté du curseur.
+            el.style.setProperty('transform', 'none', 'important');
+
+            const { left, top } = clamp(originLeft + dx, originTop + dy);
+            applyPosition(left, top);
+        };
+
+        const endDrag = (e) => {
+            if (activePointerId === null) return;
+            if (e && e.pointerId !== activePointerId) return;
+
+            try {
+                if (el.hasPointerCapture?.(activePointerId)) {
+                    el.releasePointerCapture(activePointerId);
+                }
+            } catch {
+                // Rien à relacher.
+            }
+            activePointerId = null;
+
+            if (savedTransition !== null) {
+                el.style.setProperty('transition', savedTransition, savedTransitionPriority);
+                savedTransition = null;
+            }
+            el.style.setProperty('cursor', 'pointer', 'important');
+            el.style.removeProperty('transform');
+            if (this._dragMoved) {
+                savePosition();
+            }
+            // `_dragMoved` reste vrai: le `click` qui suit doit pouvoir le lire
+            // pour s'annuler. Il est réarmé au prochain pointerdown.
+        };
+
+        // Déplacement au clavier: le badge est focusable (tabindex=0), les
+        // flèches le déplacent, Shift accélère.
+        const onKeyDown = (e) => {
+            const step = e.shiftKey ? 20 : 2;
+            const deltas = {
+                ArrowLeft: [-step, 0],
+                ArrowRight: [step, 0],
+                ArrowUp: [0, -step],
+                ArrowDown: [0, step],
+            };
+            const delta = deltas[e.key];
+            if (!delta) return;
+
+            e.preventDefault();
+            if (currentLeft === null) {
+                pinToLeftTop();
+            }
+            const { left, top } = clamp(currentLeft + delta[0], currentTop + delta[1]);
+            applyPosition(left, top);
+            savePosition();
+        };
+
+        const onResize = () => {
+            if (currentLeft === null) return;
+            const { left, top } = clamp(currentLeft, currentTop);
+            applyPosition(left, top);
+        };
+
+        el.addEventListener('pointerdown', onPointerDown);
+        el.addEventListener('pointermove', onPointerMove);
+        el.addEventListener('pointerup', endDrag);
+        el.addEventListener('pointercancel', endDrag);
+        el.addEventListener('keydown', onKeyDown);
+        window.addEventListener('resize', onResize);
+
+        // Le badge est reconstruit à chaque analyse: sans ça les listeners
+        // `resize` des instances précédentes s'accumulent sur window.
+        this._teardownDrag?.();
+        this._teardownDrag = () => {
+            clearTimeout(saveTimer);
+            window.removeEventListener('resize', onResize);
+        };
+
+        restorePosition();
+    }
+
     createSuspiciousSiteAlert() {
         const { riskConfig } = this.suspiciousSiteCheck;
         const safeColor = this.sanitizeHexColor(riskConfig.color);
