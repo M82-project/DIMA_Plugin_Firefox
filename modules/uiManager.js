@@ -474,6 +474,21 @@ class UIManager {
         return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
     }
 
+    // Échappe une chaîne pour insertion sûre dans un fragment HTML.
+    // Utilisé pour les valeurs dérivées des bases de données (technique.nom,
+    // .index, .description, .tactic, matchedKeywords[].keyword) qui sont
+    // contrôlées par les contributeurs des bases mais ne sont pas garanties
+    // exemptes de caractères HTML; même remarque pour les valeurs page-controlled.
+    escapeHtml(value) {
+        if (value == null) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     isSafeHttpUrl(url) {
         if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
             return false;
