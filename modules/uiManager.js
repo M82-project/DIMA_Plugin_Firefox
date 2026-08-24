@@ -1089,8 +1089,17 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
             
             document.getElementById('dima-modal')?.remove();
 
+            const previouslyFocused = document.activeElement;
+
             const modal = document.createElement('div');
             modal.id = 'dima-modal';
+            // Même sémantique que showSuspiciousSiteDetails: sans role=dialog ni
+            // déplacement du focus, l'activation clavier du badge ouvre un
+            // panneau que ni le clavier ni un lecteur d'écran n'atteignent.
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.setAttribute('aria-labelledby', 'dima-modal-title');
+            modal.tabIndex = -1;
             
             modal.style.cssText = `
                 position: fixed !important;
