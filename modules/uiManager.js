@@ -44,26 +44,51 @@ class UIManager {
             document.getElementById('dima-btn')?.remove();
             document.getElementById('dima-suspicious-alert')?.remove();
 
-            if (this.buttonCreated) return;
-
-            // Créer le bouton principal
+            // Créer le bouton principal (construction DOM-safe: jamais d'innerHTML
+            // sur des valeurs dérivées des résultats d'analyse).
+            //
+            // Accessibilité: c'est un <div> (pas un <button>) pour conserver le
+            // style "pilule". On ajoute donc explicitement role=button +
+            // tabindex=0, un libellé ARIA, et un handler keydown Enter/Espace.
             const button = document.createElement('div');
             button.id = 'dima-btn';
-            
-            button.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    🧠 
-                    <span style="font-weight: bold;">${this.analysisResults.globalScore}</span>
-                    <span style="font-size: 0.8em; opacity: 0.9;">${this.analysisResults.riskLevel}</span>
-                </div>
-            `;
-            
+            button.setAttribute('role', 'button');
+            button.setAttribute('tabindex', '0');
+
+            const safeRiskColor = this.sanitizeHexColor(this.analysisResults.riskColor);
+            const score = String(this.analysisResults.globalScore ?? '');
+            const level = String(this.analysisResults.riskLevel ?? '');
+            button.setAttribute(
+                'aria-label',
+                `DIMA: score de manipulation ${score}, niveau ${level}. Activer pour ouvrir le rapport détaillé. Flèches du clavier pour déplacer le badge.`
+            );
+
+            const inner = document.createElement('div');
+            inner.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+
+            const brain = document.createElement('span');
+            brain.textContent = '🧠';
+            brain.setAttribute('aria-hidden', 'true');
+
+            const scoreSpan = document.createElement('span');
+            scoreSpan.style.fontWeight = 'bold';
+            scoreSpan.textContent = score;
+
+            const levelSpan = document.createElement('span');
+            levelSpan.style.cssText = 'font-size: 0.8em; opacity: 0.9;';
+            levelSpan.textContent = level;
+
+            inner.appendChild(brain);
+            inner.appendChild(scoreSpan);
+            inner.appendChild(levelSpan);
+            button.appendChild(inner);
+
             button.style.cssText = `
                 position: fixed !important;
                 top: 20px !important;
                 right: 20px !important;
                 z-index: 999999999 !important;
-                background: linear-gradient(135deg, ${this.analysisResults.riskColor}, ${this.adjustColor(this.analysisResults.riskColor, -20)}) !important;
+                background: linear-gradient(135deg, ${safeRiskColor}, ${this.adjustColor(safeRiskColor, -20)}) !important;
                 color: white !important;
                 padding: 12px 16px !important;
                 border-radius: 25px !important;
@@ -75,12 +100,31 @@ class UIManager {
                 user-select: none !important;
                 transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
                 backdrop-filter: blur(10px) !important;
+                touch-action: none !important;
             `;
 
             button.title = this.generateTooltip();
             
             // Événements
-            button.addEventListener('click', () => this.showModal());
+            // Un déplacement se solde par un `click` que le navigateur émet
+            // quand même en fin de course: on l'avale, sinon déplacer le badge
+            // ouvrirait le rapport à chaque fois.
+            button.addEventListener('click', (e) => {
+                if (this._dragMoved) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this._dragMoved = false;
+                    return;
+                }
+                this.showModal();
+            });
+            // Sémantique <button> au clavier: Enter et Espace activent.
+            button.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                    e.preventDefault();
+                    this.showModal();
+                }
+            });
             button.addEventListener('mouseenter', () => {
                 button.style.transform = 'scale(1.05) translateY(-2px)';
                 button.style.boxShadow = '0 6px 20px rgba(0,0,0,0.3), 0 4px 8px rgba(0,0,0,0.2)';
@@ -90,7 +134,31 @@ class UIManager {
                 button.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2), 0 2px 5px rgba(0,0,0,0.1)';
             });
 
+            // Indicateur de focus clavier à double anneau: un liseré blanc
+            // dedans, un foncé dehors. Un simple contour blanc disparaît sur
+            // les pages hôtes claires, où le badge flotte sans fond garanti.
+            button.addEventListener('focus', () => {
+                button.style.setProperty('outline', 'none', 'important');
+                button.style.setProperty(
+                    'box-shadow',
+                    '0 0 0 2px #ffffff, 0 0 0 5px #1a1a1a, 0 4px 15px rgba(0,0,0,0.2)',
+                    'important'
+                );
+            });
+            button.addEventListener('blur', () => {
+                button.style.removeProperty('outline');
+                button.style.setProperty(
+                    'box-shadow',
+                    '0 4px 15px rgba(0,0,0,0.2), 0 2px 5px rgba(0,0,0,0.1)',
+                    'important'
+                );
+            });
+
             document.body?.appendChild(button);
+
+            // Après l'insertion: makeDraggable lit getBoundingClientRect pour
+            // restaurer la position sauvegardée.
+            this.makeDraggable(button);
             
             // Créer l'alerte de site suspect si nécessaire
             if (this.suspiciousSiteCheck.isSuspicious) {
@@ -103,6 +171,308 @@ class UIManager {
         } catch (error) {
             console.error('DIMA: Erreur création bouton:', error);
         }
+    }
+
+    /**
+     * Contraint une position au viewport, en gardant une marge aux bords.
+     * Fonction pure (aucune lecture du DOM) pour rester testable.
+     */
+    clampToViewport(left, top, size, viewport, margin = 4) {
+        const width = Number.isFinite(size?.width) ? size.width : 0;
+        const height = Number.isFinite(size?.height) ? size.height : 0;
+        const viewWidth = Number.isFinite(viewport?.width) ? viewport.width : 0;
+        const viewHeight = Number.isFinite(viewport?.height) ? viewport.height : 0;
+
+        const maxLeft = Math.max(margin, viewWidth - width - margin);
+        const maxTop = Math.max(margin, viewHeight - height - margin);
+
+        return {
+            left: Number.isFinite(left) ? Math.min(Math.max(margin, left), maxLeft) : margin,
+            top: Number.isFinite(top) ? Math.min(Math.max(margin, top), maxTop) : margin,
+        };
+    }
+
+    /**
+     * Rend le badge de score déplaçable à la souris, au doigt et au clavier.
+     *
+     * Pointer Events plutôt que mousedown/mousemove: un seul jeu de handlers
+     * couvre souris et tactile, et `setPointerCapture` garde le drag vivant
+     * quand le curseur sort du badge ou de la fenêtre.
+     *
+     * Les deux gestes cohabitent grâce au seuil MOVE_THRESHOLD: en dessous,
+     * l'appui reste un clic; au-dessus, il devient un déplacement et le
+     * `click` final est neutralisé via `this._dragMoved` (voir createButton).
+     */
+    makeDraggable(el) {
+        const MOVE_THRESHOLD = 4;
+        const EDGE_MARGIN = 4;
+        const STORAGE_KEY = 'dima:badgePosition';
+        const SAVE_DEBOUNCE_MS = 200;
+
+        let activePointerId = null;
+        let startX = 0, startY = 0;
+        let originLeft = 0, originTop = 0;
+        let savedTransition = null;
+        let savedTransitionPriority = '';
+        let savedTransform = null;
+        let savedTransformPriority = '';
+        let saveTimer = null;
+        // Vrai dès que l'utilisateur a déplacé le badge lui-même: empêche une
+        // restauration tardive (storage lent) d'écraser son geste.
+        let userInteracted = false;
+        // Position courante en mémoire: relire getBoundingClientRect à chaque
+        // pas forcerait un reflow et empêcherait les déplacements de se cumuler.
+        let currentLeft = null;
+        let currentTop = null;
+        // Taille du badge mise en cache: la remesurer à chaque pointermove
+        // forcerait un reflow par frame (on écrit transform, on lit le rect,
+        // on réécrit transform). Elle ne bouge pas pendant un geste.
+        let cachedSize = null;
+
+        this._dragMoved = false;
+
+        const badgeSize = () => {
+            if (!cachedSize) {
+                const rect = measureUntransformed();
+                cachedSize = { width: rect.width, height: rect.height };
+            }
+            return cachedSize;
+        };
+
+        const clamp = (left, top) => this.clampToViewport(
+            left,
+            top,
+            badgeSize(),
+            { width: window.innerWidth, height: window.innerHeight },
+            EDGE_MARGIN
+        );
+
+        const applyPosition = (left, top) => {
+            currentLeft = left;
+            currentTop = top;
+            el.style.setProperty('left', `${left}px`, 'important');
+            el.style.setProperty('top', `${top}px`, 'important');
+        };
+
+        // Le badge est posé en `right`. On bascule en `left` absolu depuis sa
+        // position rendue, pour qu'il ne saute pas au premier pixel.
+        //
+        // getBoundingClientRect() renvoie la boîte APRÈS transformation, et le
+        // handler mouseenter a posé un scale()/translateY(): mesurer sans
+        // neutraliser le transform figerait des coordonnées survolées comme
+        // left/top bruts, décalant le badge de quelques pixels au relâchement.
+        const measureUntransformed = () => {
+            const prev = el.style.getPropertyValue('transform');
+            const prevPriority = el.style.getPropertyPriority('transform');
+            el.style.setProperty('transform', 'none', 'important');
+            const rect = el.getBoundingClientRect();
+            if (prev) {
+                el.style.setProperty('transform', prev, prevPriority);
+            } else {
+                el.style.removeProperty('transform');
+            }
+            return rect;
+        };
+
+        const pinToLeftTop = () => {
+            const rect = measureUntransformed();
+            el.style.setProperty('right', 'auto', 'important');
+            el.style.setProperty('bottom', 'auto', 'important');
+            applyPosition(rect.left, rect.top);
+            return rect;
+        };
+
+        // Position globale (pas par domaine): rangée une fois, valable partout.
+        const savePosition = () => {
+            const position = { left: currentLeft, top: currentTop };
+            if (!Number.isFinite(position.left) || !Number.isFinite(position.top)) return;
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(() => {
+                try {
+                    // `storage.local.set` renvoie une promesse: sans ce catch,
+                    // un échec (quota, backend) partirait en rejet non géré.
+                    Promise.resolve(_extensionAPI?.storage?.local?.set({ [STORAGE_KEY]: position }))
+                        .catch((error) => this.log('Position du badge non sauvegardée', error));
+                } catch (error) {
+                    this.log('Position du badge non sauvegardée', error);
+                }
+            }, SAVE_DEBOUNCE_MS);
+        };
+
+        // `storage.local.get` renvoie une promesse sur l'API `browser` et sur
+        // Chrome MV3, mais l'ancienne forme à callback existe encore sur
+        // certains portages: on accepte les deux.
+        const storageGet = (key) => {
+            const local = _extensionAPI?.storage?.local;
+            if (!local?.get) return Promise.resolve(undefined);
+            const maybePromise = local.get(key);
+            if (maybePromise && typeof maybePromise.then === 'function') {
+                return maybePromise;
+            }
+            return new Promise((resolve) => local.get(key, resolve));
+        };
+
+        const restorePosition = async () => {
+            try {
+                const stored = await storageGet(STORAGE_KEY);
+                // Le storage peut répondre après que l'utilisateur a déjà
+                // déplacé le badge: son geste gagne sur la valeur stockée.
+                if (userInteracted) return;
+                const saved = stored?.[STORAGE_KEY];
+                if (!saved || !Number.isFinite(saved.left) || !Number.isFinite(saved.top)) {
+                    return;
+                }
+                el.style.setProperty('right', 'auto', 'important');
+                el.style.setProperty('bottom', 'auto', 'important');
+                const { left, top } = clamp(saved.left, saved.top);
+                applyPosition(left, top);
+            } catch (error) {
+                this.log('Position du badge non restaurée', error);
+            }
+        };
+
+        const onPointerDown = (e) => {
+            if (e.button > 0) return;
+            // Un second doigt ne doit pas détourner le geste en cours: sans ce
+            // garde, activePointerId et savedTransition sont écrasés et le
+            // badge peut rester figé sans transition.
+            if (activePointerId !== null) return;
+
+            userInteracted = true;
+            activePointerId = e.pointerId;
+            try {
+                el.setPointerCapture(activePointerId);
+            } catch {
+                // Navigateur sans capture: le drag marche tant que le curseur
+                // reste sur le badge.
+            }
+
+            const rect = pinToLeftTop();
+            originLeft = rect.left;
+            originTop = rect.top;
+            startX = e.clientX;
+            startY = e.clientY;
+            this._dragMoved = false;
+
+            // `transition: all 0.3s` s'appliquerait à left/top: sans cette
+            // coupure le badge traîne derrière le curseur.
+            savedTransition = el.style.getPropertyValue('transition');
+            savedTransitionPriority = el.style.getPropertyPriority('transition');
+            savedTransform = el.style.getPropertyValue('transform');
+            savedTransformPriority = el.style.getPropertyPriority('transform');
+            el.style.setProperty('transition', 'none', 'important');
+            el.style.setProperty('cursor', 'grabbing', 'important');
+        };
+
+        const onPointerMove = (e) => {
+            if (activePointerId === null || e.pointerId !== activePointerId) return;
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            if (!this._dragMoved && Math.hypot(dx, dy) < MOVE_THRESHOLD) return;
+
+            this._dragMoved = true;
+            e.preventDefault();
+
+            // Le survol pose un scale()/translateY() qui ferait flotter le
+            // badge à côté du curseur.
+            el.style.setProperty('transform', 'none', 'important');
+
+            const { left, top } = clamp(originLeft + dx, originTop + dy);
+            applyPosition(left, top);
+        };
+
+        const endDrag = (e) => {
+            if (activePointerId === null) return;
+            if (e && e.pointerId !== activePointerId) return;
+
+            try {
+                if (el.hasPointerCapture?.(activePointerId)) {
+                    el.releasePointerCapture(activePointerId);
+                }
+            } catch {
+                // Rien à relacher.
+            }
+            activePointerId = null;
+
+            if (savedTransition !== null) {
+                el.style.setProperty('transition', savedTransition, savedTransitionPriority);
+                savedTransition = null;
+            }
+            el.style.setProperty('cursor', 'pointer', 'important');
+            // Restaure l'état de survol d'avant le drag plutôt que de le
+            // supprimer: la souris est encore sur le badge après un clic.
+            if (savedTransform) {
+                el.style.setProperty('transform', savedTransform, savedTransformPriority);
+            } else {
+                el.style.removeProperty('transform');
+            }
+            savedTransform = null;
+            if (this._dragMoved) {
+                savePosition();
+            }
+            // `_dragMoved` reste vrai: le `click` qui suit doit pouvoir le lire
+            // pour s'annuler. Il est réarmé au prochain pointerdown.
+        };
+
+        // Déplacement au clavier: le badge est focusable (tabindex=0), les
+        // flèches le déplacent, Shift accélère.
+        const onKeyDown = (e) => {
+            const step = e.shiftKey ? 20 : 2;
+            const deltas = {
+                ArrowLeft: [-step, 0],
+                ArrowRight: [step, 0],
+                ArrowUp: [0, -step],
+                ArrowDown: [0, step],
+            };
+            const delta = deltas[e.key];
+            if (!delta) return;
+
+            userInteracted = true;
+            e.preventDefault();
+            if (currentLeft === null) {
+                pinToLeftTop();
+            }
+            const { left, top } = clamp(currentLeft + delta[0], currentTop + delta[1]);
+            applyPosition(left, top);
+            savePosition();
+        };
+
+        const onResize = () => {
+            cachedSize = null;  // la taille peut changer avec le zoom / la police
+            if (currentLeft === null) {
+                // Badge encore ancré à droite: il suit le bord tout seul. On
+                // n'intervient que s'il sort réellement du viewport (fenêtre
+                // devenue plus étroite que lui).
+                const rect = measureUntransformed();
+                const fits = rect.left >= EDGE_MARGIN
+                    && rect.top >= EDGE_MARGIN
+                    && rect.right <= window.innerWidth
+                    && rect.bottom <= window.innerHeight;
+                if (fits) return;
+                pinToLeftTop();
+            }
+            const { left, top } = clamp(currentLeft, currentTop);
+            applyPosition(left, top);
+        };
+
+        el.addEventListener('pointerdown', onPointerDown);
+        el.addEventListener('pointermove', onPointerMove);
+        el.addEventListener('pointerup', endDrag);
+        el.addEventListener('pointercancel', endDrag);
+        el.addEventListener('keydown', onKeyDown);
+        window.addEventListener('resize', onResize);
+
+        // Le badge est reconstruit à chaque analyse: sans ça les listeners
+        // `resize` des instances précédentes s'accumulent sur window.
+        this._teardownDrag?.();
+        this._teardownDrag = () => {
+            clearTimeout(saveTimer);
+            window.removeEventListener('resize', onResize);
+        };
+
+        restorePosition();
     }
 
     createSuspiciousSiteAlert() {
@@ -474,6 +844,21 @@ class UIManager {
         return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
     }
 
+    // Échappe une chaîne pour insertion sûre dans un fragment HTML.
+    // Utilisé pour les valeurs dérivées des bases de données (technique.nom,
+    // .index, .description, .tactic, matchedKeywords[].keyword) qui sont
+    // contrôlées par les contributeurs des bases mais ne sont pas garanties
+    // exemptes de caractères HTML; même remarque pour les valeurs page-controlled.
+    escapeHtml(value) {
+        if (value == null) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     isSafeHttpUrl(url) {
         if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
             return false;
@@ -704,8 +1089,17 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
             
             document.getElementById('dima-modal')?.remove();
 
+            const previouslyFocused = document.activeElement;
+
             const modal = document.createElement('div');
             modal.id = 'dima-modal';
+            // Même sémantique que showSuspiciousSiteDetails: sans role=dialog ni
+            // déplacement du focus, l'activation clavier du badge ouvre un
+            // panneau que ni le clavier ni un lecteur d'écran n'atteignent.
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.setAttribute('aria-labelledby', 'dima-modal-title');
+            modal.tabIndex = -1;
             
             modal.style.cssText = `
                 position: fixed !important;
@@ -750,22 +1144,40 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                     </div>
                 `;
             }
-            
+
+            // Note: Toutes les valeurs dérivées de l'analyse (technique.*,
+            // matchedKeywords, page title/url) sont injectées via this.escapeHtml()
+            // pour éviter qu'un caractère HTML dans une base de données ne casse
+            // le rendu ou n'introduise un vecteur XSS. Les onclick/onerror inline
+            // ont été remplacés par des addEventListener (CSP-safe).
+            const esc = (v) => this.escapeHtml(v);
+            const phaseIcon = (phase) => {
+                switch (phase) {
+                    case 'Detect': return '👁️';
+                    case 'Informer': return '📢';
+                    case 'Mémoriser': return '🧠';
+                    case 'Agir': return '⚡';
+                    default: return '•';
+                }
+            };
+
+            const safeRiskColor = this.sanitizeHexColor(this.analysisResults.riskColor);
+
             modal.innerHTML = `
                 <div style="background: white; padding: 30px; border-radius: 20px; max-width: 900px; max-height: 90vh; overflow-y: auto; margin: 20px; box-shadow: 0 25px 50px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out;">
                     
                     <!-- En-tête -->
                     <div style="text-align: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 2px solid #f0f0f0;">
                         <div style="display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 10px;">
-                            <img src="${logoUrl}" 
-                                 style="width: 24px; height: 24px;" 
-                                 alt="M82 Project"
-                                 onerror="this.style.display='none'">
-                            <h2 style="color: #2c3e50; margin: 0; font-size: 1.8em;">Analyse DIMA</h2>
+                            <img src="${esc(logoUrl)}"
+                                 id="dima-modal-logo"
+                                 style="width: 24px; height: 24px;"
+                                 alt="M82 Project">
+                            <h2 id="dima-modal-title" style="color: #2c3e50; margin: 0; font-size: 1.8em;">Analyse DIMA</h2>
                         </div>
                         <p style="color: #7f8c8d; margin: 0; font-size: 0.95em;">
                             Détection de techniques de manipulation cognitive par 
-                            <a href="https://m82-project.org/" target="_blank" 
+                            <a href="https://m82-project.org/" target="_blank" rel="noopener noreferrer"
                                style="color: #3498db; text-decoration: none; font-weight: 500;">M82 Project</a>
                         </p>
                     </div>
@@ -774,20 +1186,20 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                     
                     <!-- Métriques principales -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 25px;">
-                        <div style="background: linear-gradient(135deg, ${this.analysisResults.riskColor}, ${this.adjustColor(this.analysisResults.riskColor, -15)}); color: white; padding: 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                            <div style="font-size: 2.2em; font-weight: bold; margin-bottom: 5px;">${this.analysisResults.globalScore}</div>
+                        <div style="background: linear-gradient(135deg, ${safeRiskColor}, ${this.adjustColor(safeRiskColor, -15)}); color: white; padding: 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                            <div style="font-size: 2.2em; font-weight: bold; margin-bottom: 5px;">${esc(this.analysisResults.globalScore)}</div>
                             <div style="font-size: 0.9em; opacity: 0.9;">Score Global</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; text-align: center; border: 1px solid #e9ecef;">
-                            <div style="font-size: 2.2em; font-weight: bold; color: #3498db; margin-bottom: 5px;">${this.analysisResults.detectedTechniques.length}</div>
+                            <div style="font-size: 2.2em; font-weight: bold; color: #3498db; margin-bottom: 5px;">${esc(this.analysisResults.detectedTechniques.length)}</div>
                             <div style="color: #7f8c8d; font-size: 0.9em;">Techniques</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; text-align: center; border: 1px solid #e9ecef;">
-                            <div style="font-size: 1.4em; font-weight: bold; color: ${this.analysisResults.riskColor}; margin-bottom: 5px;">${this.analysisResults.riskLevel}</div>
+                            <div style="font-size: 1.4em; font-weight: bold; color: ${safeRiskColor}; margin-bottom: 5px;">${esc(this.analysisResults.riskLevel)}</div>
                             <div style="color: #7f8c8d; font-size: 0.9em;">Niveau Risque</div>
                         </div>
                         <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; text-align: center; border: 1px solid #e9ecef;">
-                            <div style="font-size: 1.6em; font-weight: bold; color: #17a2b8; margin-bottom: 5px;">${this.analysisResults.contentLength}</div>
+                            <div style="font-size: 1.6em; font-weight: bold; color: #17a2b8; margin-bottom: 5px;">${esc(this.analysisResults.contentLength)}</div>
                             <div style="color: #7f8c8d; font-size: 0.9em;">Caractères</div>
                         </div>
                     </div>
@@ -800,8 +1212,8 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                         <div style="font-weight: 500; margin-bottom: 8px; line-height: 1.4;" data-dima-placeholder="page-title"></div>
                         <div style="color: #666; font-size: 0.9em; word-break: break-all; margin-bottom: 8px;" data-dima-placeholder="page-url"></div>
                         <div style="color: #888; font-size: 0.85em;">
-                            Analysé le ${new Date(this.analysisResults.timestamp).toLocaleString('fr-FR')} • 
-                            ${this.analysisResults.analyzedText} caractères traités • Type: ${this.pageType}
+                            Analysé le ${esc(new Date(this.analysisResults.timestamp).toLocaleString('fr-FR'))} •
+                            ${esc(this.analysisResults.analyzedText)} caractères traités • Type: ${esc(this.pageType)}
                         </div>
                     </div>
 
@@ -821,22 +1233,22 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                                         <div style="display: flex; justify-content: between; align-items: start; margin-bottom: 8px;">
                                             <div style="flex: 1;">
                                                 <div style="font-weight: bold; color: #2c3e50; margin-bottom: 4px; font-size: 1.05em;">
-                                                    ${technique.phase === 'Detect' ? '👁️' : technique.phase === 'Informer' ? '📢' : technique.phase === 'Mémoriser' ? '🧠' : '⚡'} ${technique.index}: ${technique.nom}
+                                                    ${esc(phaseIcon(technique.phase))} ${esc(technique.index)}: ${esc(technique.nom)}
                                                 </div>
-                                                ${technique.tactic ? `<div style="font-size: 0.75em; color: #7f8c8d; margin-bottom: 8px;">↳ Tactique: ${technique.tactic}</div>` : ''}
-                                                ${technique.description ? `<div style="color: #666; font-size: 0.9em; margin-bottom: 8px; line-height: 1.4;">${technique.description}</div>` : ''}
+                                                ${technique.tactic ? `<div style="font-size: 0.75em; color: #7f8c8d; margin-bottom: 8px;">↳ Tactique: ${esc(technique.tactic)}</div>` : ''}
+                                                ${technique.description ? `<div style="color: #666; font-size: 0.9em; margin-bottom: 8px; line-height: 1.4;">${esc(technique.description)}</div>` : ''}
                                             </div>
                                             <span style="background: #27ae60; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; margin-left: 15px;">
-                                                ${technique.confidence}%
+                                                ${esc(technique.confidence)}%
                                             </span>
                                         </div>
                                         
                                         <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 8px;">
                                             <span style="background: #e67e22; color: white; padding: 3px 8px; border-radius: 6px; font-size: 0.8em; font-weight: 500;">
-                                                ${technique.phase}
+                                                ${esc(technique.phase)}
                                             </span>
                                             <div style="text-align: right; font-size: 0.75em; color: #7f8c8d;">
-                                                <div>Score pondéré: ${technique.weightedScore?.toFixed(1) || technique.score}</div>
+                                                <div>Score pondéré: ${esc(technique.weightedScore?.toFixed(1) ?? technique.score)}</div>
                                             </div>
                                         </div>
                                         
@@ -848,11 +1260,11 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                                                 <div style="display: flex; flex-wrap: wrap; gap: 4px;">
                                                     ${technique.matchedKeywords.slice(0, 4).map(keyword => 
                                                         `<span style="background: #e9ecef; color: #495057; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">
-                                                            ${keyword.keyword} ${(keyword.count > 1) ? `(×${keyword.count})` : ''}
+                                                            ${esc(keyword.keyword)} ${(keyword.count > 1) ? `(×${esc(keyword.count)})` : ''}
                                                         </span>`
                                                     ).join('')}
                                                     ${technique.matchedKeywords.length > 4 ? 
-                                                        `<span style="color: #999; font-size: 0.75em; padding: 2px 4px;">+${technique.matchedKeywords.length - 4} autres...</span>` 
+                                                        `<span style="color: #999; font-size: 0.75em; padding: 2px 4px;">+${esc(technique.matchedKeywords.length - 4)} autres...</span>` 
                                                         : ''
                                                     }
                                                 </div>
@@ -867,11 +1279,11 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                     <!-- Actions -->
                     <div style="text-align: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e9ecef;">
                         <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
-                            <button onclick="document.getElementById('dima-modal').remove()" 
+                            <button type="button" id="dima-modal-close-btn"
                                     style="background: #3498db; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background 0.3s;">
                                 Fermer
                             </button>
-                            <button onclick="window.open('https://m82-project.org/', '_blank')" 
+                            <button type="button" id="dima-modal-learn-more-btn"
                                     style="background: #95a5a6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background 0.3s;">
                                 En savoir plus
                             </button>
@@ -915,14 +1327,79 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
             }
 
             modal.addEventListener('click', (e) => {
-                if (e.target === modal) modal.remove();
+                if (e.target === modal) closeModal();
             });
 
             modal.querySelector('.suspicious-details-btn')?.addEventListener('click', () => {
                 this.showSuspiciousSiteDetails();
             });
 
+            // Boutons Fermer / En savoir plus : on remplace les anciens
+            // onclick inline (bloqués par les CSP strictes des sites hôtes).
+            modal.querySelector('#dima-modal-close-btn')?.addEventListener('click', () => {
+                closeModal();
+            });
+            modal.querySelector('#dima-modal-learn-more-btn')?.addEventListener('click', () => {
+                window.open('https://m82-project.org/', '_blank', 'noopener,noreferrer');
+            });
+            // onerror inline du logo, également bloqué par certaines CSP.
+            modal.querySelector('#dima-modal-logo')?.addEventListener('error', (e) => {
+                e.currentTarget.style.display = 'none';
+            });
+
+            let cleanedUp = false;
+            const cleanup = () => {
+                if (cleanedUp) return;
+                cleanedUp = true;
+                document.removeEventListener('keydown', onModalKeyDown, true);
+                if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+                    previouslyFocused.focus();
+                }
+            };
+            const closeModal = () => {
+                if (modal.isConnected) modal.remove();
+                cleanup();
+            };
+
+            // Focus trap: capture phase + stopPropagation pour que les
+            // raccourcis de la page hôte ne se déclenchent pas derrière.
+            const onModalKeyDown = (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeModal();
+                    return;
+                }
+                if (e.key !== 'Tab') return;
+                const focusables = modal.querySelectorAll(
+                    'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                );
+                if (focusables.length === 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    modal.focus();
+                    return;
+                }
+                const first = focusables[0];
+                const last = focusables[focusables.length - 1];
+                const active = document.activeElement;
+                if (e.shiftKey && (active === first || !modal.contains(active))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    last.focus();
+                } else if (!e.shiftKey && (active === last || !modal.contains(active))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    first.focus();
+                } else {
+                    e.stopPropagation();
+                }
+            };
+
+            document.addEventListener('keydown', onModalKeyDown, true);
+
             document.body.appendChild(modal);
+            modal.querySelector('#dima-modal-close-btn')?.focus();
             this.log('Modal affiché');
 
         } catch (error) {
@@ -931,5 +1408,5 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
     }
 }
 
-// Make UIManager available globally for Chrome extension
+// Make UIManager available globally for the extension content scripts
 window.UIManager = UIManager;
