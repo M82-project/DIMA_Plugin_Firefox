@@ -999,6 +999,19 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
                 this.showSuspiciousSiteDetails();
             });
 
+            // Boutons Fermer / En savoir plus : on remplace les anciens
+            // onclick inline (bloqués par les CSP strictes des sites hôtes).
+            modal.querySelector('#dima-modal-close-btn')?.addEventListener('click', () => {
+                modal.remove();
+            });
+            modal.querySelector('#dima-modal-learn-more-btn')?.addEventListener('click', () => {
+                window.open('https://m82-project.org/', '_blank', 'noopener,noreferrer');
+            });
+            // onerror inline du logo, également bloqué par certaines CSP.
+            modal.querySelector('#dima-modal-logo')?.addEventListener('error', (e) => {
+                e.currentTarget.style.display = 'none';
+            });
+
             document.body.appendChild(modal);
             this.log('Modal affiché');
 
@@ -1008,5 +1021,5 @@ ${techniques.map(t => `• ${t.nom}`).join('\n')}`;
     }
 }
 
-// Make UIManager available globally for Chrome extension
+// Make UIManager available globally for the extension content scripts
 window.UIManager = UIManager;
