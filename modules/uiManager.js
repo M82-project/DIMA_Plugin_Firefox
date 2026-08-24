@@ -134,7 +134,22 @@ class UIManager {
                 button.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2), 0 2px 5px rgba(0,0,0,0.1)';
             });
 
+            // Indicateur visuel de focus clavier (le user-agent ne stylise
+            // pas les <div role=button> par défaut).
+            button.addEventListener('focus', () => {
+                button.style.outline = '2px solid #ffffff';
+                button.style.outlineOffset = '2px';
+            });
+            button.addEventListener('blur', () => {
+                button.style.outline = '';
+                button.style.outlineOffset = '';
+            });
+
             document.body?.appendChild(button);
+
+            // Après l'insertion: makeDraggable lit getBoundingClientRect pour
+            // restaurer la position sauvegardée.
+            this.makeDraggable(button);
             
             // Créer l'alerte de site suspect si nécessaire
             if (this.suspiciousSiteCheck.isSuspicious) {
