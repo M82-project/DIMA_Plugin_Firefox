@@ -13,6 +13,9 @@ const repoRoot = resolve(import.meta.dirname, '..', '..');
 // mais uiManager.js y fait référence au top-level
 // (`_extensionAPI = browser ?? chrome`). On les stubbe avant chaque appel à
 // loadScript pour éviter ReferenceError.
+//
+// `browser` et `chrome` pointent volontairement sur le MÊME objet : muter
+// `browser.storage.local` dans un test affecte donc aussi `chrome`.
 export function loadScript(relativePath) {
   ensureExtensionApiStub();
   const src = readFileSync(resolve(repoRoot, relativePath), 'utf8');
@@ -23,6 +26,12 @@ function ensureExtensionApiStub() {
   const stub = {
     runtime: {
       getURL: (path) => `moz-extension://test/${path}`,
+    },
+    storage: {
+      local: {
+        get: async () => ({}),
+        set: async () => undefined,
+      },
     },
   };
   if (typeof globalThis.browser === 'undefined') {
