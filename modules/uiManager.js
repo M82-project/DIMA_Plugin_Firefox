@@ -223,7 +223,7 @@ class UIManager {
         this._dragMoved = false;
 
         const clamp = (left, top) => {
-            const rect = el.getBoundingClientRect();
+            const rect = measureUntransformed();
             return this.clampToViewport(
                 left,
                 top,
@@ -242,8 +242,26 @@ class UIManager {
 
         // Le badge est posé en `right`. On bascule en `left` absolu depuis sa
         // position rendue, pour qu'il ne saute pas au premier pixel.
-        const pinToLeftTop = () => {
+        //
+        // getBoundingClientRect() renvoie la boîte APRÈS transformation, et le
+        // handler mouseenter a posé un scale()/translateY(): mesurer sans
+        // neutraliser le transform figerait des coordonnées survolées comme
+        // left/top bruts, décalant le badge de quelques pixels au relâchement.
+        const measureUntransformed = () => {
+            const prev = el.style.getPropertyValue('transform');
+            const prevPriority = el.style.getPropertyPriority('transform');
+            el.style.setProperty('transform', 'none', 'important');
             const rect = el.getBoundingClientRect();
+            if (prev) {
+                el.style.setProperty('transform', prev, prevPriority);
+            } else {
+                el.style.removeProperty('transform');
+            }
+            return rect;
+        };
+
+        const pinToLeftTop = () => {
+            const rect = measureUntransformed();
             el.style.setProperty('right', 'auto', 'important');
             el.style.setProperty('bottom', 'auto', 'important');
             applyPosition(rect.left, rect.top);
