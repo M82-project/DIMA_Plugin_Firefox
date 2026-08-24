@@ -214,7 +214,12 @@ class UIManager {
         let originLeft = 0, originTop = 0;
         let savedTransition = null;
         let savedTransitionPriority = '';
+        let savedTransform = null;
+        let savedTransformPriority = '';
         let saveTimer = null;
+        // Vrai dès que l'utilisateur a déplacé le badge lui-même: empêche une
+        // restauration tardive (storage lent) d'écraser son geste.
+        let userInteracted = false;
         // Position courante en mémoire: relire getBoundingClientRect à chaque
         // pas forcerait un reflow et empêcherait les déplacements de se cumuler.
         let currentLeft = null;
@@ -301,6 +306,7 @@ class UIManager {
         const onPointerDown = (e) => {
             if (e.button > 0) return;
 
+            userInteracted = true;
             activePointerId = e.pointerId;
             try {
                 el.setPointerCapture(activePointerId);
@@ -391,6 +397,7 @@ class UIManager {
             const delta = deltas[e.key];
             if (!delta) return;
 
+            userInteracted = true;
             e.preventDefault();
             if (currentLeft === null) {
                 pinToLeftTop();
