@@ -1,6 +1,6 @@
 {
   "name": "dima-plugin-firefox",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "description": "Plugin Firefox DIMA (Digital Influence Manipulation Analyzer) — M82 Project",
   "type": "module",
